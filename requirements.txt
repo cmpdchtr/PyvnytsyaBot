@@ -1,0 +1,6 @@
+aiogram>=3.0
+sqlalchemy
+asyncpg
+pydantic-settings
+python-dotenv
+google-generativeai
