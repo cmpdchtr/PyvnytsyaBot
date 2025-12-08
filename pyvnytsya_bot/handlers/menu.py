@@ -74,6 +74,24 @@ async def add_bot(callback: types.CallbackQuery, session: AsyncSession):
         parse_mode="Markdown"
     )
 
+@router.callback_query(F.data.startswith("delete_room_"))
+async def delete_room(callback: types.CallbackQuery, session: AsyncSession):
+    code = callback.data.split("_")[2]
+    result = await session.execute(select(Room).where(Room.code == code))
+    room = result.scalar_one_or_none()
+    
+    if not room or room.creator_id != callback.from_user.id:
+        await callback.answer("Помилка доступу.", show_alert=True)
+        return
+
+    await session.delete(room)
+    await session.commit()
+    await callback.message.edit_text("🗑️ Кімната видалена.", reply_markup=back_to_main())
+
+@router.callback_query(F.data.startswith("settings_"))
+async def room_settings(callback: types.CallbackQuery):
+    await callback.answer("Налаштування поки недоступні в цій версії.", show_alert=True)
+
 @router.callback_query(F.data == "join_room")
 async def join_room_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
