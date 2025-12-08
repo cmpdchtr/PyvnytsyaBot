@@ -15,9 +15,15 @@ class Room(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(6), unique=True, nullable=False)
     creator_id = Column(BigInteger, ForeignKey("users.id"))
+    
+    # Game State
     is_active = Column(Boolean, default=False)
     is_finished = Column(Boolean, default=False)
-    scenario = Column(Text, nullable=True) # AI generated scenario
+    round_number = Column(Integer, default=0)
+    phase = Column(String, default="registration") # registration, revealing, voting, finished
+    survivors_count = Column(Integer, default=2) # How many should survive
+    
+    scenario = Column(Text, nullable=True)
     
     players = relationship("Player", back_populates="room", cascade="all, delete-orphan")
 
@@ -25,7 +31,7 @@ class Player(Base):
     __tablename__ = "players"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"))
+    user_id = Column(BigInteger, ForeignKey("users.id")) # Negative for bots
     room_id = Column(Integer, ForeignKey("rooms.id"))
     
     # Characteristics
@@ -35,8 +41,15 @@ class Player(Base):
     phobia = Column(String, nullable=True)
     inventory = Column(String, nullable=True)
     fact = Column(String, nullable=True)
+    age = Column(Integer, nullable=True) # Added Age
+    bio = Column(String, nullable=True) # Gender/Bio
     
-    is_kicked = Column(Boolean, default=False)
+    # Game State
+    is_alive = Column(Boolean, default=True)
+    revealed_traits = Column(String, default="") # Comma separated: "profession,health"
+    has_voted = Column(Boolean, default=False)
+    has_revealed_card = Column(Boolean, default=False) # For current round
+    votes_received = Column(Integer, default=0)
     
     room = relationship("Room", back_populates="players")
     user = relationship("User")
