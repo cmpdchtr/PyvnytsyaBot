@@ -168,6 +168,25 @@ async def process_reveal(callback: types.CallbackQuery, session: AsyncSession, b
 
     await session.commit()
 
+@router.callback_query(F.data.startswith("my_status_"))
+async def my_status(callback: types.CallbackQuery, session: AsyncSession):
+    code = callback.data.split("_")[2]
+    room = await get_room_with_players(session, code)
+    
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    if not player:
+        await callback.answer("Ви не у грі.", show_alert=True)
+        return
+        
+    card_text = format_player_card(player, show_hidden=True)
+    is_admin = (room.creator_id == callback.from_user.id)
+    
+    await callback.message.edit_text(
+        f"👤 **Ваші характеристики:**\n\n{card_text}", 
+        reply_markup=game_dashboard(code, is_alive=player.is_alive, is_admin=is_admin),
+        parse_mode="Markdown"
+    )
+
 @router.callback_query(F.data.startswith("view_scenario_"))
 async def view_scenario(callback: types.CallbackQuery, session: AsyncSession):
     code = callback.data.split("_")[2]
@@ -175,18 +194,25 @@ async def view_scenario(callback: types.CallbackQuery, session: AsyncSession):
     
     player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
     is_alive = player.is_alive if player else False
+    is_admin = (room.creator_id == callback.from_user.id)
 
     msg = (
         f"📜 **Сценарій:**\n{room.scenario}\n\n"
         f"🎯 **Ціль:** Вижити має {room.survivors_count} людей.\n"
         f"🔢 **Раунд:** {room.round_number}"
     )
-    await callback.message.edit_text(msg, reply_markup=game_dashboard(code, is_alive=is_alive), parse_mode="Markdown")
+    await callback.message.edit_text(msg, reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("back_to_game_"))
-async def back_to_game(callback: types.CallbackQuery):
+async def back_to_game(callback: types.CallbackQuery, session: AsyncSession):
     code = callback.data.split("_")[3]
-    await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code))
+    room = await get_room_with_players(session, code)
+    
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    is_alive = player.is_alive if player else False
+    is_admin = (room.creator_id == callback.from_user.id)
+
+    await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin))
 
 # --- View Table ---
 
@@ -195,17 +221,27 @@ async def view_table(callback: types.CallbackQuery, session: AsyncSession):
     code = callback.data.split("_")[2]
     room = await get_room_with_players(session, code)
     
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    is_alive = player.is_alive if player else False
+    is_admin = (room.creator_id == callback.from_user.id)
+
     report = f"📋 **Стіл гравців (Раунд {room.round_number})**\n\n"
     
     for p in room.players:
         report += format_player_card(p, show_hidden=False) + "\n"
         
-    await callback.message.edit_text(report, reply_markup=game_dashboard(code, is_alive=True), parse_mode="Markdown")
+    await callback.message.edit_text(report, reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("refresh_game_"))
-async def refresh_game(callback: types.CallbackQuery):
+async def refresh_game(callback: types.CallbackQuery, session: AsyncSession):
     code = callback.data.split("_")[2]
-    await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code))
+    room = await get_room_with_players(session, code)
+    
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    is_alive = player.is_alive if player else False
+    is_admin = (room.creator_id == callback.from_user.id)
+
+    await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin))
 
 # --- Voting Logic ---
 
