@@ -17,11 +17,16 @@ class AIService:
 
     async def generate_ending(self, survivors_info: str) -> str:
         prompt = (
-            f"Ти - ведучий гри 'Бункер'. Гра закінчилася. Ось список тих, хто вижив і потрапив у бункер:\n{survivors_info}\n\n"
-            "Напиши кінцівку історії. Чи виживуть вони в бункері з такими характеристиками? Що з ними станеться? "
-            "Відповідь українською мовою."
+            f"Ти - ведучий гри 'Бункер'. Гра закінчилася. Ось список тих, хто вижив:\n{survivors_info}\n\n"
+            "Напиши коротку кінцівку (2-3 речення). Чи виживуть вони? Відповідь українською."
         )
-        response = await self.model.generate_content_async(prompt)
-        return response.text
+        try:
+            response = await self.model.generate_content_async(prompt)
+            if response and response.text:
+                return response.text
+            else:
+                return "Історія завершилася мовчанням..."
+        except Exception as e:
+            raise Exception(f"Failed to generate ending: {e}")
 
 ai_service = AIService()

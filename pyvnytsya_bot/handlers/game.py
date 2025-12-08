@@ -6,6 +6,9 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 import random
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..database.models import Room, Player
 from ..services.gemini import ai_service
@@ -401,11 +404,20 @@ async def end_game(room, session, bot):
     survivors = [p for p in room.players if p.is_alive]
     survivors_desc = "\n".join([format_player_card(p, show_hidden=True) for p in survivors])
     
-    await bot.send_message(room.creator_id, "🏁 Гра завершена! Генерую кінцівку...")
-    
     try:
-        ending = await ai_service.generate_ending(survivors_desc)
-    except:
+        await bot.send_message(room.creator_id, "🏁 Гра завершена! Генерую кінцівку...")
+    except Exception as e:
+        logger.error(f"Failed to send status message: {e}")
+    
+    ending = None
+    try:
+        # Add timeout to prevent hanging (30 seconds max)
+        ending = await asyncio.wait_for(ai_service.generate_ending(survivors_desc), timeout=30.0)
+    except asyncio.TimeoutError:
+        logger.error(f"AI ending generation timed out after 30 seconds")
+        ending = "Час кінчився, а кінцівка ще генерується. Вибачте, дещо пішло не так."
+    except Exception as e:
+        logger.error(f"AI ending generation failed: {e}")
         ending = "Всі вижили... або ні. AI втомився."
         
     final_msg = (
@@ -418,4 +430,5 @@ async def end_game(room, session, bot):
         if p.user_id > 0:
             try:
                 await bot.send_message(p.user_id, final_msg, parse_mode="Markdown", reply_markup=main_menu())
-            except: pass
+            except Exception as e:
+                logger.error(f"Failed to send final message to {p.user_id}: {e}")
