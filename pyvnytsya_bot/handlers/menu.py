@@ -2,6 +2,7 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import random
 
 from ..database.models import Room, Player, User
 from ..utils.codes import generate_room_code
@@ -26,7 +27,48 @@ async def create_room(callback: types.CallbackQuery, session: AsyncSession):
     await session.commit()
     
     await callback.message.edit_text(
-        f"✅ Кімната створена!\n\n🔑 Код кімнати: `{code}`\n\n"
+        f"✅ Кімната створена!\n\n🔑 Код кімнати: `{code}`\n"
+        f"👥 Гравців: 1\n\n"
+        "Поділіться цим кодом з друзями. Коли всі приєднаються, натисніть 'Почати гру'.",
+        reply_markup=room_creator_menu(code),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("add_bot_"))
+async def add_bot(callback: types.CallbackQuery, session: AsyncSession):
+    code = callback.data.split("_")[2]
+    
+    result = await session.execute(select(Room).where(Room.code == code))
+    room = result.scalar_one_or_none()
+    
+    if not room:
+        await callback.answer("Кімнату не знайдено.", show_alert=True)
+        return
+        
+    if room.creator_id != callback.from_user.id:
+        await callback.answer("Тільки творець може додавати ботів!", show_alert=True)
+        return
+
+    # Create fake user
+    bot_id = -random.randint(1000, 999999)
+    bot_name = f"Bot_{abs(bot_id)}"
+    
+    fake_user = User(id=bot_id, username=bot_name, full_name=bot_name)
+    session.add(fake_user)
+    
+    # Add player
+    player = Player(user_id=bot_id, room_id=room.id)
+    session.add(player)
+    
+    await session.commit()
+    
+    # Count players
+    players_res = await session.execute(select(Player).where(Player.room_id == room.id))
+    players_count = len(players_res.scalars().all())
+    
+    await callback.message.edit_text(
+        f"✅ Кімната створена!\n\n🔑 Код кімнати: `{code}`\n"
+        f"👥 Гравців: {players_count}\n\n"
         "Поділіться цим кодом з друзями. Коли всі приєднаються, натисніть 'Почати гру'.",
         reply_markup=room_creator_menu(code),
         parse_mode="Markdown"

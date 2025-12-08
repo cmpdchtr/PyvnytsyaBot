@@ -56,22 +56,46 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
     await session.commit()
     
     # Notify all players
+    bots_info = []
+
     for player in room.players:
-        try:
-            msg = (
-                f"☢️ **ГРА ПОЧАЛАСЯ!** ☢️\n\n"
-                f"📜 **Сценарій:**\n{scenario}\n\n"
-                f"👤 **Твоя характеристика:**\n"
-                f"🛠 Професія: {player.profession}\n"
-                f"❤️ Здоров'я: {player.health}\n"
-                f"🎨 Хобі: {player.hobby}\n"
-                f"😱 Фобія: {player.phobia}\n"
-                f"🎒 Інвентар: {player.inventory}\n"
-                f"ℹ️ Факт: {player.fact}"
+        msg = (
+            f"☢️ **ГРА ПОЧАЛАСЯ!** ☢️\n\n"
+            f"📜 **Сценарій:**\n{scenario}\n\n"
+            f"👤 **Твоя характеристика:**\n"
+            f"🛠 Професія: {player.profession}\n"
+            f"❤️ Здоров'я: {player.health}\n"
+            f"🎨 Хобі: {player.hobby}\n"
+            f"😱 Фобія: {player.phobia}\n"
+            f"🎒 Інвентар: {player.inventory}\n"
+            f"ℹ️ Факт: {player.fact}"
+        )
+
+        if player.user_id < 0:
+            # It's a bot
+            bot_info = (
+                f"🤖 **Бот {abs(player.user_id)}**:\n"
+                f"🛠 {player.profession}, ❤️ {player.health}, 🎨 {player.hobby}, "
+                f"😱 {player.phobia}, 🎒 {player.inventory}, ℹ️ {player.fact}\n"
             )
+            bots_info.append(bot_info)
+            continue
+
+        try:
             await bot.send_message(player.user_id, msg, parse_mode="Markdown")
         except Exception as e:
             print(f"Failed to send to {player.user_id}: {e}")
+
+    if bots_info:
+        bots_summary = "\n".join(bots_info)
+        try:
+            await bot.send_message(
+                room.creator_id, 
+                f"📋 **Інформація про ботів:**\n\n{bots_summary}", 
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to send bot summary to creator: {e}")
 
     await callback.message.answer("✅ Гра почалася! Всім розіслано характеристики.")
 

@@ -12,6 +12,7 @@ def main_menu() -> InlineKeyboardMarkup:
 def room_creator_menu(room_code: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🚀 Почати гру", callback_data=f"start_game_{room_code}")
+    builder.button(text="🤖 Додати бота", callback_data=f"add_bot_{room_code}")
     builder.button(text="⚙️ Налаштування", callback_data=f"settings_{room_code}")
     builder.button(text="❌ Видалити кімнату", callback_data=f"delete_room_{room_code}")
     builder.adjust(1)
