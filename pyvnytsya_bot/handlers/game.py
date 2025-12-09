@@ -57,6 +57,7 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
 
     # Load Pack Data if exists
     pack_data = None
+    pack_prompts = {}
     if room.pack_id:
         from ..database.models import GamePack
         import json
@@ -64,14 +65,16 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
         pack = pack_res.scalar_one_or_none()
         if pack:
             try:
-                pack_data = json.loads(pack.data)
+                full_pack = json.loads(pack.data)
+                pack_data = full_pack.get("data", {})
+                pack_prompts = full_pack.get("ai_prompts", {})
             except:
                 print("Failed to load pack data")
 
     # Generate Scenario
     try:
-        # TODO: Use custom prompt from pack if available
-        scenario = await ai_service.generate_scenario()
+        scenario_prompt = pack_prompts.get("scenario_prompt")
+        scenario = await ai_service.generate_scenario(custom_prompt=scenario_prompt)
     except Exception as e:
         scenario = "Сталася помилка генерації сценарію. Уявіть, що настав зомбі-апокаліпсис."
         print(f"AI Error: {e}")
@@ -496,10 +499,24 @@ async def end_game(room, session, bot):
     except Exception as e:
         logger.error(f"Failed to send status message: {e}")
     
+    # Load Pack Data for Ending Prompt
+    ending_prompt = None
+    if room.pack_id:
+        from ..database.models import GamePack
+        import json
+        pack_res = await session.execute(select(GamePack).where(GamePack.id == room.pack_id))
+        pack = pack_res.scalar_one_or_none()
+        if pack:
+            try:
+                full_pack = json.loads(pack.data)
+                ending_prompt = full_pack.get("ai_prompts", {}).get("ending_prompt")
+            except:
+                pass
+
     ending = None
     try:
         # Add timeout to prevent hanging (30 seconds max)
-        ending = await asyncio.wait_for(ai_service.generate_ending(survivors_desc, room.scenario), timeout=30.0)
+        ending = await asyncio.wait_for(ai_service.generate_ending(survivors_desc, room.scenario, custom_prompt=ending_prompt), timeout=30.0)
     except asyncio.TimeoutError:
         logger.error(f"AI ending generation timed out after 30 seconds")
         ending = "Час кінчився, а кінцівка ще генерується. Вибачте, дещо пішло не так."
