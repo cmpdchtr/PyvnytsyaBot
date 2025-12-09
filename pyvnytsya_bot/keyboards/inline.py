@@ -98,15 +98,37 @@ def settings_menu(room_code: str) -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def packs_menu(room_code: str, packs: list) -> InlineKeyboardMarkup:
+def packs_menu(room_code: str, packs: list, user_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="📦 Стандартний", callback_data=f"set_pack_default_{room_code}")
     
     for pack in packs:
         builder.button(text=f"📦 {pack.name}", callback_data=f"set_pack_{pack.id}_{room_code}")
+        if pack.user_id == user_id:
+             builder.button(text="❌", callback_data=f"delete_pack_{pack.id}_{room_code}")
         
     builder.button(text="📥 Завантажити шаблон", callback_data=f"get_template_{room_code}")
     builder.button(text="📤 Завантажити свій пак", callback_data=f"upload_pack_{room_code}")
     builder.button(text="🔙 Назад", callback_data=f"settings_{room_code}")
-    builder.adjust(1)
+    
+    # Adjust layout: 1 for default, then 2 for custom packs (select + delete) or 1 if public, then 1 for actions
+    # This is tricky with dynamic adjust. Let's try to be smart.
+    # We can't easily mix 1 and 2 columns with simple .adjust() if the pattern is irregular.
+    # But we can add them row by row? No, builder accumulates.
+    # Let's use a simpler approach: just set adjust to 2, and make "Standard" span 2 columns? No.
+    # Let's just use adjust(2) for the packs part?
+    
+    # Actually, let's manually manage the grid.
+    # But builder.adjust() takes a list of integers for row sizes.
+    
+    sizes = [1] # Standard
+    for pack in packs:
+        if pack.user_id == user_id:
+            sizes.append(2) # Select + Delete
+        else:
+            sizes.append(1) # Select only
+            
+    sizes.extend([1, 1, 1]) # Actions
+    
+    builder.adjust(*sizes)
     return builder.as_markup()

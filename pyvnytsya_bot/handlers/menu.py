@@ -122,7 +122,7 @@ async def choose_pack(callback: types.CallbackQuery, session: AsyncSession):
     packs = result.scalars().all()
     
     from ..keyboards.inline import packs_menu
-    await callback.message.edit_text("📂 Оберіть пак для гри:", reply_markup=packs_menu(code, packs))
+    await callback.message.edit_text("📂 Оберіть пак для гри:", reply_markup=packs_menu(code, packs, callback.from_user.id))
 
 @router.callback_query(F.data.startswith("set_pack_"))
 async def set_pack(callback: types.CallbackQuery, session: AsyncSession):
@@ -148,6 +148,42 @@ async def set_pack(callback: types.CallbackQuery, session: AsyncSession):
 
     await session.commit()
     await callback.answer(f"✅ Обрано пак: {pack_name}", show_alert=True)
+
+@router.callback_query(F.data.startswith("delete_pack_"))
+async def delete_pack(callback: types.CallbackQuery, session: AsyncSession):
+    parts = callback.data.split("_")
+    pack_id = int(parts[2])
+    code = parts[3]
+
+    from ..database.models import GamePack
+    
+    # Check if pack exists and belongs to user
+    result = await session.execute(select(GamePack).where(GamePack.id == pack_id, GamePack.user_id == callback.from_user.id))
+    pack = result.scalar_one_or_none()
+    
+    if not pack:
+        await callback.answer("❌ Пак не знайдено або ви не є його власником.", show_alert=True)
+        return
+
+    # Check if the current room is using it and reset
+    room_res = await session.execute(select(Room).where(Room.code == code))
+    room = room_res.scalar_one_or_none()
+    
+    if room and room.pack_id == pack_id:
+        room.pack_id = None
+    
+    await session.delete(pack)
+    await session.commit()
+    
+    await callback.answer("🗑️ Пак видалено!", show_alert=True)
+    
+    # Refresh menu
+    stmt = select(GamePack).where((GamePack.user_id == callback.from_user.id) | (GamePack.is_public == True))
+    result = await session.execute(stmt)
+    packs = result.scalars().all()
+    
+    from ..keyboards.inline import packs_menu
+    await callback.message.edit_text("📂 Оберіть пак для гри:", reply_markup=packs_menu(code, packs, callback.from_user.id))
     
     from ..keyboards.inline import settings_menu
     await callback.message.edit_text(f"⚙️ Налаштування кімнати `{code}`\n📦 Поточний пак: *{pack_name}*", reply_markup=settings_menu(code), parse_mode="Markdown")
