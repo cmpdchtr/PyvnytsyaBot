@@ -165,12 +165,9 @@ async def delete_pack(callback: types.CallbackQuery, session: AsyncSession):
         await callback.answer("❌ Пак не знайдено або ви не є його власником.", show_alert=True)
         return
 
-    # Check if the current room is using it and reset
-    room_res = await session.execute(select(Room).where(Room.code == code))
-    room = room_res.scalar_one_or_none()
-    
-    if room and room.pack_id == pack_id:
-        room.pack_id = None
+    # Remove pack reference from ALL rooms that use it to avoid ForeignKey violation
+    from sqlalchemy import update
+    await session.execute(update(Room).where(Room.pack_id == pack_id).values(pack_id=None))
     
     await session.delete(pack)
     await session.commit()
@@ -184,9 +181,6 @@ async def delete_pack(callback: types.CallbackQuery, session: AsyncSession):
     
     from ..keyboards.inline import packs_menu
     await callback.message.edit_text("📂 Оберіть пак для гри:", reply_markup=packs_menu(code, packs, callback.from_user.id))
-    
-    from ..keyboards.inline import settings_menu
-    await callback.message.edit_text(f"⚙️ Налаштування кімнати `{code}`\n📦 Поточний пак: *{pack_name}*", reply_markup=settings_menu(code), parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("get_template_"))
 async def get_template(callback: types.CallbackQuery):
