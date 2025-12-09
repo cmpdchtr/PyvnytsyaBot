@@ -451,7 +451,7 @@ async def end_game(room, session, bot):
     ending = None
     try:
         # Add timeout to prevent hanging (30 seconds max)
-        ending = await asyncio.wait_for(ai_service.generate_ending(survivors_desc), timeout=30.0)
+        ending = await asyncio.wait_for(ai_service.generate_ending(survivors_desc, room.scenario), timeout=30.0)
     except asyncio.TimeoutError:
         logger.error(f"AI ending generation timed out after 30 seconds")
         ending = "Час кінчився, а кінцівка ще генерується. Вибачте, дещо пішло не так."
