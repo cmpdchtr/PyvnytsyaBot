@@ -48,7 +48,7 @@ class Player(Base):
     is_alive = Column(Boolean, default=True)
     revealed_traits = Column(String, default="") # Comma separated: "profession,health"
     has_voted = Column(Boolean, default=False)
-    has_revealed_card = Column(Boolean, default=False) # For current round
+    revealed_count_round = Column(Integer, default=0) # Cards revealed in current round
     votes_received = Column(Integer, default=0)
     
     room = relationship("Room", back_populates="players")

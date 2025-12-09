@@ -65,7 +65,7 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
         player.bio = chars["bio"]
         player.is_alive = True
         player.revealed_traits = ""
-        player.has_revealed_card = False
+        player.revealed_count_round = 0
     
     await session.commit()
     
@@ -79,10 +79,10 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
             f"☢️ **ГРА ПОЧАЛАСЯ!** ☢️\n\n"
             f"📜 **Сценарій:**\n{scenario}\n\n"
             f"🎯 **Ціль:** Вижити має {room.survivors_count} людей.\n"
-            f"🔢 **Раунд 1:** Відкрийте одну характеристику!"
+            f"🔢 **Раунд 1:** Відкрийте 2 характеристики!"
         )
         try:
-            await bot.send_message(player.user_id, msg, parse_mode="Markdown", reply_markup=game_dashboard(code, is_admin=is_admin))
+            await bot.send_message(player.user_id, msg, parse_mode="Markdown", reply_markup=game_dashboard(code, phase="revealing", is_admin=is_admin))
         except Exception as e:
             print(f"Failed to send to {player.user_id}: {e}")
 
@@ -104,8 +104,9 @@ async def open_reveal_menu(callback: types.CallbackQuery, session: AsyncSession)
         await callback.answer("Зараз не час відкривати карти!", show_alert=True)
         return
 
-    if player.has_revealed_card:
-        await callback.answer("Ви вже відкрили карту в цьому раунді!", show_alert=True)
+    limit = 2 if room.round_number == 1 else 1
+    if player.revealed_count_round >= limit:
+        await callback.answer(f"Ви вже відкрили {limit} карт(и) в цьому раунді!", show_alert=True)
         return
 
     revealed = player.revealed_traits.split(",") if player.revealed_traits else []
@@ -123,8 +124,13 @@ async def process_reveal(callback: types.CallbackQuery, session: AsyncSession, b
     room = await get_room_with_players(session, code)
     player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
     
-    if not player or player.has_revealed_card:
+    if not player:
         await callback.answer("Дія недоступна.", show_alert=True)
+        return
+
+    limit = 2 if room.round_number == 1 else 1
+    if player.revealed_count_round >= limit:
+        await callback.answer(f"Ліміт відкриття карт на цей раунд вичерпано ({limit}).", show_alert=True)
         return
 
     # Update DB
@@ -132,7 +138,7 @@ async def process_reveal(callback: types.CallbackQuery, session: AsyncSession, b
     if trait not in current_revealed:
         current_revealed.append(trait)
         player.revealed_traits = ",".join(current_revealed)
-        player.has_revealed_card = True
+        player.revealed_count_round += 1
         await session.commit()
         
         trait_name = {
@@ -149,29 +155,54 @@ async def process_reveal(callback: types.CallbackQuery, session: AsyncSession, b
                     await bot.send_message(p.user_id, notification, parse_mode="Markdown")
                 except: pass
     
-    await callback.message.edit_text("✅ Карта відкрита!", reply_markup=game_dashboard(code, is_admin=(player.user_id == room.creator_id)))
+    is_admin = (player.user_id == room.creator_id)
+    await callback.message.edit_text("✅ Карта відкрита!", reply_markup=game_dashboard(code, phase=room.phase, is_admin=is_admin))
     
     # Check if all alive players revealed
     alive_players = [p for p in room.players if p.is_alive and p.user_id > 0] # Only real players need to act manually? 
     
     # Auto-reveal for bots ONLY if creator revealed
     if player.user_id == room.creator_id:
-        bots = [p for p in room.players if p.is_alive and p.user_id < 0 and not p.has_revealed_card]
+        bots = [p for p in room.players if p.is_alive and p.user_id < 0]
         for bot_player in bots:
-            # Bot reveals random unrevealed trait
-            all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
-            bot_revealed = bot_player.revealed_traits.split(",") if bot_player.revealed_traits else []
-            available = [t for t in all_traits if t not in bot_revealed]
-            
-            if available:
-                chosen = random.choice(available)
-                bot_revealed.append(chosen)
-                bot_player.revealed_traits = ",".join(bot_revealed)
-                bot_player.has_revealed_card = True
-                # Notify
-                # await bot.send_message(room.creator_id, f"🤖 Бот відкрив {chosen}") 
+            if bot_player.revealed_count_round < limit:
+                # Bot reveals random unrevealed trait
+                all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
+                bot_revealed = bot_player.revealed_traits.split(",") if bot_player.revealed_traits else []
+                available = [t for t in all_traits if t not in bot_revealed]
+                
+                if available:
+                    chosen = random.choice(available)
+                    bot_revealed.append(chosen)
+                    bot_player.revealed_traits = ",".join(bot_revealed)
+                    bot_player.revealed_count_round += 1
+                    # Notify
+                    # await bot.send_message(room.creator_id, f"🤖 Бот відкрив {chosen}") 
 
     await session.commit()
+
+@router.callback_query(F.data.startswith("start_discuss_"))
+async def start_discuss(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
+    code = callback.data.split("_")[2]
+    room = await get_room_with_players(session, code)
+    
+    if room.creator_id != callback.from_user.id:
+        await callback.answer("Тільки адмін може почати обговорення.", show_alert=True)
+        return
+
+    room.phase = "discussion"
+    await session.commit()
+    
+    msg = "🗣 **Етап обговорення!**\nАргументуйте, чому ви маєте вижити, і хто має піти."
+    
+    for p in room.players:
+        if p.user_id > 0:
+            try:
+                is_admin = (p.user_id == room.creator_id)
+                await bot.send_message(p.user_id, msg, parse_mode="Markdown", reply_markup=game_dashboard(code, phase="discussion", is_alive=p.is_alive, is_admin=is_admin))
+            except: pass
+            
+    await callback.message.answer("🗣 Обговорення розпочато!")
 
 @router.callback_query(F.data.startswith("my_status_"))
 async def my_status(callback: types.CallbackQuery, session: AsyncSession):
@@ -193,7 +224,7 @@ async def my_status(callback: types.CallbackQuery, session: AsyncSession):
     with suppress(TelegramBadRequest):
         await callback.message.edit_text(
             f"👤 **Ваші характеристики:**\n\n{card_text}", 
-            reply_markup=game_dashboard(code, is_alive=player.is_alive, is_admin=is_admin),
+            reply_markup=game_dashboard(code, phase=room.phase, is_alive=player.is_alive, is_admin=is_admin),
             parse_mode="Markdown"
         )
     await callback.answer()
@@ -217,7 +248,7 @@ async def view_scenario(callback: types.CallbackQuery, session: AsyncSession):
         f"🔢 **Раунд:** {room.round_number}"
     )
     with suppress(TelegramBadRequest):
-        await callback.message.edit_text(msg, reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
+        await callback.message.edit_text(msg, reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("back_to_game_"))
@@ -234,7 +265,7 @@ async def back_to_game(callback: types.CallbackQuery, session: AsyncSession):
     is_admin = (room.creator_id == callback.from_user.id)
 
     with suppress(TelegramBadRequest):
-        await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin))
+        await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin))
     await callback.answer()
 
 # --- View Table ---
@@ -258,7 +289,7 @@ async def view_table(callback: types.CallbackQuery, session: AsyncSession):
         report += format_player_card(p, show_hidden=False) + "\n"
         
     with suppress(TelegramBadRequest):
-        await callback.message.edit_text(report, reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
+        await callback.message.edit_text(report, reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("refresh_game_"))
@@ -275,7 +306,7 @@ async def refresh_game(callback: types.CallbackQuery, session: AsyncSession):
     is_admin = (room.creator_id == callback.from_user.id)
 
     with suppress(TelegramBadRequest):
-        await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code, is_alive=is_alive, is_admin=is_admin))
+        await callback.message.edit_text("🎮 Панель гравця:", reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin))
     await callback.answer()
 
 # --- Voting Logic ---
@@ -365,12 +396,16 @@ async def finish_voting(room, session, bot):
     # Handle ties? For now, just pick one.
     
     loser.is_alive = False
+    # Reveal all traits for loser
+    all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
+    loser.revealed_traits = ",".join(all_traits)
+    
     room.round_number += 1
     room.phase = "revealing"
     
     # Reset round state
     for p in room.players:
-        p.has_revealed_card = False
+        p.revealed_count_round = 0
         p.has_voted = False
         p.votes_received = 0
         
@@ -380,7 +415,8 @@ async def finish_voting(room, session, bot):
     msg = (
         f"💀 **Голосування завершено!**\n"
         f"Бункер покидає: **{loser.user.full_name or loser.user.username}**.\n\n"
-        f"🔢 **Раунд {room.round_number} почався!**"
+        f"🔢 **Раунд {room.round_number} почався!**\n"
+        f"Відкрийте 1 характеристику!"
     )
     
     # Check Game Over
@@ -393,7 +429,7 @@ async def finish_voting(room, session, bot):
         if p.user_id > 0:
             try:
                 is_admin = (p.user_id == room.creator_id)
-                await bot.send_message(p.user_id, msg, parse_mode="Markdown", reply_markup=game_dashboard(room.code, p.is_alive, is_admin=is_admin))
+                await bot.send_message(p.user_id, msg, parse_mode="Markdown", reply_markup=game_dashboard(room.code, phase="revealing", is_alive=p.is_alive, is_admin=is_admin))
             except: pass
 
 async def end_game(room, session, bot):

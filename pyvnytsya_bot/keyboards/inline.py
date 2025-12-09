@@ -32,17 +32,23 @@ def back_to_main() -> InlineKeyboardMarkup:
 
 # --- Game Keyboards ---
 
-def game_dashboard(room_code: str, is_alive: bool = True, is_admin: bool = False) -> InlineKeyboardMarkup:
+def game_dashboard(room_code: str, phase: str = "revealing", is_alive: bool = True, is_admin: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    if is_alive:
+    
+    if is_alive and phase == "revealing":
         builder.button(text="🃏 Відкрити карту", callback_data=f"reveal_menu_{room_code}")
+    
+    if is_alive:
         builder.button(text="👤 Мої характеристики", callback_data=f"my_status_{room_code}")
     
     builder.button(text="👀 Стіл гравців", callback_data=f"view_table_{room_code}")
     builder.button(text="📜 Інфо про бункер", callback_data=f"view_scenario_{room_code}")
     
     if is_admin:
-        builder.button(text="📢 Почати голосування", callback_data=f"force_vote_{room_code}")
+        if phase == "revealing":
+            builder.button(text="🗣 Почати обговорення", callback_data=f"start_discuss_{room_code}")
+        elif phase == "discussion":
+            builder.button(text="📢 Почати голосування", callback_data=f"force_vote_{room_code}")
         
     builder.button(text="🔄 Оновити", callback_data=f"refresh_game_{room_code}")
     builder.adjust(1)
