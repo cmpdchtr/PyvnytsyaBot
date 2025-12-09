@@ -507,3 +507,43 @@ async def end_game(room, session, bot):
                 await bot.send_message(p.user_id, final_msg, parse_mode="Markdown", reply_markup=main_menu())
             except Exception as e:
                 logger.error(f"Failed to send final message to {p.user_id}: {e}")
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def game_chat(message: types.Message, session: AsyncSession, bot: Bot):
+    """Handles in-game chat messages."""
+    # Find active room for user
+    stmt = (
+        select(Room)
+        .join(Player)
+        .options(selectinload(Room.players).selectinload(Player.user))
+        .where(
+            Player.user_id == message.from_user.id,
+            Room.is_active == True,
+            Room.is_finished == False
+        )
+    )
+    result = await session.execute(stmt)
+    room = result.scalar_one_or_none()
+
+    if not room:
+        return
+
+    sender = next((p for p in room.players if p.user_id == message.from_user.id), None)
+    
+    # Optional: Check if dead players can talk. For now, allow it.
+    # if not sender.is_alive:
+    #    await message.reply("💀 Мертві не говорять...")
+    #    return
+
+    sender_name = message.from_user.full_name or message.from_user.username
+    safe_sender_name = escape_markdown(sender_name)
+    safe_text = escape_markdown(message.text)
+    
+    chat_msg = f"💬 *{safe_sender_name}*: {safe_text}"
+
+    for p in room.players:
+        if p.user_id > 0 and p.user_id != message.from_user.id: # Send to others
+            try:
+                await bot.send_message(p.user_id, chat_msg, parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Failed to send chat message to {p.user_id}: {e}")
