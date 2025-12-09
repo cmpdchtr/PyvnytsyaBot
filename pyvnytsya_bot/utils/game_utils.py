@@ -250,8 +250,11 @@ def format_player_card(player, show_hidden=False):
             return f"{label}: {value}"
         return f"{label}: ❓"
 
+    name = player.user.full_name or player.user.username
+    safe_name = str(name).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
+
     return (
-        f"👤 **{player.user.full_name or player.user.username}** {'(💀)' if not player.is_alive else ''}\n"
+        f"👤 **{safe_name}** {'(💀)' if not player.is_alive else ''}\n"
         f"{get_trait('bio', '⚧ Стать', player.bio)}, {get_trait('age', '🎂 Вік', player.age)}\n"
         f"{get_trait('profession', '🛠 Професія', player.profession)}\n"
         f"{get_trait('health', '❤️ Здоров\'я', player.health)}\n"

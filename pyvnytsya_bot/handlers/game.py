@@ -148,7 +148,8 @@ async def process_reveal(callback: types.CallbackQuery, session: AsyncSession, b
         }.get(trait, trait)
 
         # Notify everyone
-        notification = f"📢 **{player.user.full_name}** відкрив **{trait_name}**!"
+        safe_name = (player.user.full_name or player.user.username).replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
+        notification = f"📢 **{safe_name}** відкрив **{trait_name}**!"
         for p in room.players:
             if p.user_id > 0:
                 try:
@@ -371,7 +372,8 @@ async def process_vote(callback: types.CallbackQuery, session: AsyncSession, bot
             await callback.message.answer(f"🤖 Боти підтримали ваш вибір!")
 
         await session.commit()
-        await callback.message.edit_text(f"✅ Ви проголосували проти {target.user.full_name or target.user.username}.")
+        safe_target_name = (target.user.full_name or target.user.username).replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
+        await callback.message.edit_text(f"✅ Ви проголосували проти {safe_target_name}.")
     
     # Check if all voted (bots vote randomly)
     alive_real_players = [p for p in room.players if p.is_alive and p.user_id > 0]
@@ -412,9 +414,10 @@ async def finish_voting(room, session, bot):
     await session.commit()
     
     # Notify result
+    safe_loser_name = (loser.user.full_name or loser.user.username).replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
     msg = (
         f"💀 **Голосування завершено!**\n"
-        f"Бункер покидає: **{loser.user.full_name or loser.user.username}**.\n\n"
+        f"Бункер покидає: **{safe_loser_name}**.\n\n"
         f"🔢 **Раунд {room.round_number} почався!**\n"
         f"Відкрийте 1 характеристику!"
     )
