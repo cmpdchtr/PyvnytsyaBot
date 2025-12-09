@@ -55,8 +55,22 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
 
     await callback.message.edit_text("⏳ Генерую світ та характеристики... Зачекайте.")
 
+    # Load Pack Data if exists
+    pack_data = None
+    if room.pack_id:
+        from ..database.models import GamePack
+        import json
+        pack_res = await session.execute(select(GamePack).where(GamePack.id == room.pack_id))
+        pack = pack_res.scalar_one_or_none()
+        if pack:
+            try:
+                pack_data = json.loads(pack.data)
+            except:
+                print("Failed to load pack data")
+
     # Generate Scenario
     try:
+        # TODO: Use custom prompt from pack if available
         scenario = await ai_service.generate_scenario()
     except Exception as e:
         scenario = "Сталася помилка генерації сценарію. Уявіть, що настав зомбі-апокаліпсис."
@@ -70,7 +84,7 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
     
     # Assign characteristics
     for player in room.players:
-        chars = generate_characteristics()
+        chars = generate_characteristics(pack_data)
         player.profession = chars["profession"]
         player.health = chars["health"]
         player.hobby = chars["hobby"]

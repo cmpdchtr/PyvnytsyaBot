@@ -24,8 +24,20 @@ class Room(Base):
     survivors_count = Column(Integer, default=2) # How many should survive
     
     scenario = Column(Text, nullable=True)
+    pack_id = Column(Integer, ForeignKey("game_packs.id"), nullable=True)
     
     players = relationship("Player", back_populates="room", cascade="all, delete-orphan")
+    pack = relationship("GamePack")
+
+class GamePack(Base):
+    __tablename__ = "game_packs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.id")) # Owner
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    data = Column(Text, nullable=False) # JSON string
+    is_public = Column(Boolean, default=False)
 
 class Player(Base):
     __tablename__ = "players"

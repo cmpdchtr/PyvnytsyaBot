@@ -225,11 +225,32 @@ BIO = [
 ]
 
 def get_random_trait(traits_list):
-    choices = [t[0] for t in traits_list]
-    weights = [t[1] for t in traits_list]
+    # Handle both list of tuples (value, weight) and list of dicts {"name": value, "weight": weight}
+    if not traits_list: return "Нічого"
+    
+    first = traits_list[0]
+    if isinstance(first, dict):
+        choices = [t["name"] for t in traits_list]
+        weights = [t.get("weight", 1) for t in traits_list]
+    else:
+        choices = [t[0] for t in traits_list]
+        weights = [t[1] for t in traits_list]
+        
     return random.choices(choices, weights=weights, k=1)[0]
 
-def generate_characteristics():
+def generate_characteristics(pack_data=None):
+    if pack_data:
+        return {
+            "profession": get_random_trait(pack_data.get("professions", PROFESSIONS)),
+            "health": get_random_trait(pack_data.get("health", HEALTH)),
+            "hobby": get_random_trait(pack_data.get("hobby", HOBBIES)),
+            "phobia": get_random_trait(pack_data.get("phobia", PHOBIAS)),
+            "inventory": get_random_trait(pack_data.get("inventory", INVENTORY)),
+            "fact": get_random_trait(pack_data.get("fact", FACTS)),
+            "age": random.randint(18, 90),
+            "bio": get_random_trait(pack_data.get("bio", BIO))
+        }
+        
     return {
         "profession": get_random_trait(PROFESSIONS),
         "health": get_random_trait(HEALTH),

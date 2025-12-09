@@ -90,3 +90,23 @@ def admin_game_menu(room_code: str) -> InlineKeyboardMarkup:
     builder.button(text="👀 Стіл гравців", callback_data=f"view_table_{room_code}")
     builder.adjust(1)
     return builder.as_markup()
+
+def settings_menu(room_code: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📂 Обрати Пак (Пресет)", callback_data=f"choose_pack_{room_code}")
+    builder.button(text="🔙 Назад", callback_data=f"back_to_room_{room_code}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def packs_menu(room_code: str, packs: list) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📦 Стандартний", callback_data=f"set_pack_default_{room_code}")
+    
+    for pack in packs:
+        builder.button(text=f"📦 {pack.name}", callback_data=f"set_pack_{pack.id}_{room_code}")
+        
+    builder.button(text="📥 Завантажити шаблон", callback_data=f"get_template_{room_code}")
+    builder.button(text="📤 Завантажити свій пак", callback_data=f"upload_pack_{room_code}")
+    builder.button(text="🔙 Назад", callback_data=f"settings_{room_code}")
+    builder.adjust(1)
+    return builder.as_markup()
