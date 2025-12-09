@@ -75,13 +75,15 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
         
         is_admin = (player.user_id == room.creator_id)
         
-        msg = (
-            f"☢️ **ГРА ПОЧАЛАСЯ!** ☢️\n\n"
-            f"📜 **Сценарій:**\n{scenario}\n\n"
-            f"🎯 **Ціль:** Вижити має {room.survivors_count} людей.\n"
-            f"🔢 **Раунд 1:** Відкрийте 2 характеристики!"
-        )
         try:
+            # Send scenario separately to avoid message length limits
+            await bot.send_message(player.user_id, f"📜 **Сценарій:**\n{scenario}", parse_mode="Markdown")
+            
+            msg = (
+                f"☢️ **ГРА ПОЧАЛАСЯ!** ☢️\n\n"
+                f"🎯 **Ціль:** Вижити має {room.survivors_count} людей.\n"
+                f"🔢 **Раунд 1:** Відкрийте 2 характеристики!"
+            )
             await bot.send_message(player.user_id, msg, parse_mode="Markdown", reply_markup=game_dashboard(code, phase="revealing", is_admin=is_admin))
         except Exception as e:
             print(f"Failed to send to {player.user_id}: {e}")
@@ -459,15 +461,16 @@ async def end_game(room, session, bot):
         logger.error(f"AI ending generation failed: {e}")
         ending = "Всі вижили... або ні. AI втомився."
         
-    final_msg = (
-        f"🏁 **ГРА ЗАВЕРШЕНА!** 🏁\n\n"
-        f"📜 **Історія виживання:**\n{ending}\n\n"
-        f"Дякую за гру!"
-    )
-    
     for p in room.players:
         if p.user_id > 0:
             try:
+                # Send ending separately
+                await bot.send_message(p.user_id, f"📜 **Історія виживання:**\n{ending}", parse_mode="Markdown")
+                
+                final_msg = (
+                    f"🏁 **ГРА ЗАВЕРШЕНА!** 🏁\n\n"
+                    f"Дякую за гру!"
+                )
                 await bot.send_message(p.user_id, final_msg, parse_mode="Markdown", reply_markup=main_menu())
             except Exception as e:
                 logger.error(f"Failed to send final message to {p.user_id}: {e}")
