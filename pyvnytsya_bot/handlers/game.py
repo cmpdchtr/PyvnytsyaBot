@@ -68,6 +68,10 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
                 full_pack = json.loads(pack.data)
                 pack_data = full_pack.get("data", {})
                 pack_prompts = full_pack.get("ai_prompts", {})
+                
+                # Fallback for legacy packs (if data was saved as just the inner dict)
+                if not pack_data and "professions" in full_pack:
+                     pack_data = full_pack
             except:
                 print("Failed to load pack data")
 

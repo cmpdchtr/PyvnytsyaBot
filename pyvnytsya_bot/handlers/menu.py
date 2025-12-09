@@ -255,7 +255,7 @@ async def handle_document(message: types.Message, session: AsyncSession, bot: Bo
             user_id=message.from_user.id,
             name=data["name"],
             description=data.get("description", ""),
-            data=json.dumps(data["data"]), # Store data part as string
+            data=json.dumps(data), # Store full JSON to preserve ai_prompts
             is_public=False
         )
         session.add(new_pack)
