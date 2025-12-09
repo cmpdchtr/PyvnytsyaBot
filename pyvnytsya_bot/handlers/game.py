@@ -521,9 +521,10 @@ async def game_chat(message: types.Message, session: AsyncSession, bot: Bot):
             Room.is_active == True,
             Room.is_finished == False
         )
+        .order_by(Room.id.desc())
     )
     result = await session.execute(stmt)
-    room = result.scalar_one_or_none()
+    room = result.scalars().first()
 
     if not room:
         return
