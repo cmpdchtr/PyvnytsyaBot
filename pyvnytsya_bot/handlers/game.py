@@ -18,6 +18,22 @@ from ..keyboards.inline import game_dashboard, reveal_menu, voting_menu, admin_g
 
 router = Router()
 
+async def send_long_message(bot: Bot, chat_id: int, text: str, parse_mode: str = "HTML", reply_markup=None):
+    """Splits long messages into chunks of 4096 characters."""
+    MAX_LENGTH = 4096
+    
+    if len(text) <= MAX_LENGTH:
+        await bot.send_message(chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup)
+        return
+
+    # Split by chunks
+    chunks = [text[i:i+MAX_LENGTH] for i in range(0, len(text), MAX_LENGTH)]
+    
+    for i, chunk in enumerate(chunks):
+        # Only attach markup to the last chunk
+        markup = reply_markup if i == len(chunks) - 1 else None
+        await bot.send_message(chat_id, chunk, parse_mode=parse_mode, reply_markup=markup)
+
 async def get_room_with_players(session, code):
     result = await session.execute(
         select(Room).options(selectinload(Room.players).selectinload(Player.user)).where(Room.code == code)
@@ -78,12 +94,8 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
         
         try:
             # Send scenario separately to avoid message length limits
-            # Use HTML and escape scenario just in case, though AI usually returns safe text or we want formatting?
-            # AI returns Markdown usually. We should probably strip it or convert it if we use HTML.
-            # For now, let's stick to HTML for our UI, and try to send AI text as is but escaped?
-            # No, if AI returns **bold**, and we use HTML, it shows **bold**. That's better than crashing.
             safe_scenario = html.escape(scenario)
-            await bot.send_message(player.user_id, f"📜 <b>Сценарій:</b>\n{safe_scenario}", parse_mode="HTML")
+            await send_long_message(bot, player.user_id, f"📜 <b>Сценарій:</b>\n{safe_scenario}", parse_mode="HTML")
             
             msg = (
                 f"☢️ <b>ГРА ПОЧАЛАСЯ!</b> ☢️\n\n"
@@ -281,7 +293,7 @@ async def back_to_game(callback: types.CallbackQuery, session: AsyncSession):
 # --- View Table ---
 
 @router.callback_query(F.data.startswith("view_table_"))
-async def view_table(callback: types.CallbackQuery, session: AsyncSession):
+async def view_table(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
     code = callback.data.split("_")[2]
     room = await get_room_with_players(session, code)
     
@@ -299,7 +311,19 @@ async def view_table(callback: types.CallbackQuery, session: AsyncSession):
         report += format_player_card(p, show_hidden=False) + "\n"
         
     with suppress(TelegramBadRequest):
-        await callback.message.edit_text(report, reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin), parse_mode="HTML")
+        # Use send_long_message logic but for edit_text it's harder.
+        # If report is too long, we can't edit_text easily into multiple messages.
+        # We should probably send a new message if it's too long, or just truncate.
+        # For now, let's try to send as new message if too long? No, that breaks flow.
+        # Let's just hope table isn't > 4096 chars. 
+        # If it is, we can split it.
+        if len(report) > 4096:
+             # Fallback: send as new messages
+             await send_long_message(bot, callback.from_user.id, report, parse_mode="HTML")
+             # And update the original message to say "Table sent below"
+             await callback.message.edit_text("📋 Стіл гравців надіслано окремим повідомленням 👇", reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin))
+        else:
+             await callback.message.edit_text(report, reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin), parse_mode="HTML")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("refresh_game_"))
@@ -474,7 +498,7 @@ async def end_game(room, session, bot):
             try:
                 # Send ending separately
                 safe_ending = html.escape(ending)
-                await bot.send_message(p.user_id, f"📜 <b>Історія виживання:</b>\n{safe_ending}", parse_mode="HTML")
+                await send_long_message(bot, p.user_id, f"📜 <b>Історія виживання:</b>\n{safe_ending}", parse_mode="HTML")
                 
                 final_msg = (
                     f"🏁 <b>ГРА ЗАВЕРШЕНА!</b> 🏁\n\n"
