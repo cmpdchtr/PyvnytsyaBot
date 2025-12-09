@@ -241,6 +241,8 @@ def generate_characteristics():
         "bio": get_random_trait(BIO)
     }
 
+import html
+
 def format_player_card(player, show_hidden=False):
     """Formats player card. If show_hidden is False, hides unrevealed traits."""
     revealed = player.revealed_traits.split(",") if player.revealed_traits else []
@@ -251,10 +253,10 @@ def format_player_card(player, show_hidden=False):
         return f"{label}: ❓"
 
     name = player.user.full_name or player.user.username
-    safe_name = str(name).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
+    safe_name = html.escape(str(name))
 
     return (
-        f"👤 **{safe_name}** {'(💀)' if not player.is_alive else ''}\n"
+        f"👤 <b>{safe_name}</b> {'(💀)' if not player.is_alive else ''}\n"
         f"{get_trait('bio', '⚧ Стать', player.bio)}, {get_trait('age', '🎂 Вік', player.age)}\n"
         f"{get_trait('profession', '🛠 Професія', player.profession)}\n"
         f"{get_trait('health', '❤️ Здоров\'я', player.health)}\n"
