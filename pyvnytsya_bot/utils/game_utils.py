@@ -241,7 +241,10 @@ def generate_characteristics():
         "bio": get_random_trait(BIO)
     }
 
-import html
+def escape_markdown(text):
+    """Escapes special characters for Telegram Markdown (legacy)."""
+    if not text: return ""
+    return str(text).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
 
 def format_player_card(player, show_hidden=False):
     """Formats player card. If show_hidden is False, hides unrevealed traits."""
@@ -253,13 +256,13 @@ def format_player_card(player, show_hidden=False):
         return f"{label}: ❓"
 
     name = player.user.full_name or player.user.username
-    safe_name = html.escape(str(name))
+    safe_name = escape_markdown(name)
 
     return (
-        f"👤 <b>{safe_name}</b> {'(💀)' if not player.is_alive else ''}\n"
+        f"👤 *{safe_name}* {'(💀)' if not player.is_alive else ''}\n"
         f"{get_trait('bio', '⚧ Стать', player.bio)}, {get_trait('age', '🎂 Вік', player.age)}\n"
         f"{get_trait('profession', '🛠 Професія', player.profession)}\n"
-        f"{get_trait('health', '❤️ Здоров\'я', player.health)}\n"
+        f'{get_trait("health", "❤️ Здоров\'я", player.health)}\n'
         f"{get_trait('hobby', '🎨 Хобі', player.hobby)}\n"
         f"{get_trait('phobia', '😱 Фобія', player.phobia)}\n"
         f"{get_trait('inventory', '🎒 Інвентар', player.inventory)}\n"
