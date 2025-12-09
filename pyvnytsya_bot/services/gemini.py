@@ -4,7 +4,7 @@ from ..config import config
 class AIService:
     def __init__(self):
         genai.configure(api_key=config.GEMINI_API_KEY.get_secret_value())
-        self.model = genai.GenerativeModel('gemini-2.5-flash') 
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite') 
 
     async def generate_scenario(self) -> str:
         prompt = (
