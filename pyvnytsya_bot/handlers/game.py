@@ -326,7 +326,10 @@ async def view_table(callback: types.CallbackQuery, session: AsyncSession, bot: 
     is_alive = player.is_alive if player else False
     is_admin = (room.creator_id == callback.from_user.id)
 
-    report = f"📋 *Стіл гравців (Раунд {room.round_number})*\n\n"
+    report = (
+        f"📋 *СТІЛ ГРАВЦІВ* | Раунд {room.round_number}\n"
+        f"➖➖➖➖➖➖➖➖➖➖\n\n"
+    )
     
     for p in room.players:
         report += format_player_card(p, show_hidden=False) + "\n"

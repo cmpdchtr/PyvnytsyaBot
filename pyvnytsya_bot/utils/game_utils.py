@@ -273,19 +273,20 @@ def format_player_card(player, show_hidden=False):
     
     def get_trait(key, label, value):
         if show_hidden or key in revealed:
-            return f"{label}: {value}"
-        return f"{label}: ❓"
+            return f"{label} {value}"
+        return f"{label} ❓"
 
     name = player.user.full_name or player.user.username
     safe_name = escape_markdown(name)
+    status = "🟢" if player.is_alive else "💀"
 
     return (
-        f"👤 *{safe_name}* {'(💀)' if not player.is_alive else ''}\n"
-        f"{get_trait('bio', '⚧ Стать', player.bio)}, {get_trait('age', '🎂 Вік', player.age)}\n"
-        f"{get_trait('profession', '🛠 Професія', player.profession)}\n"
-        f'{get_trait("health", "❤️ Здоров\'я", player.health)}\n'
-        f"{get_trait('hobby', '🎨 Хобі', player.hobby)}\n"
-        f"{get_trait('phobia', '😱 Фобія', player.phobia)}\n"
-        f"{get_trait('inventory', '🎒 Інвентар', player.inventory)}\n"
-        f"{get_trait('fact', 'ℹ️ Факт', player.fact)}\n"
+        f"👤 *{safe_name}* {status}\n"
+        f"├ {get_trait('bio', '⚧', player.bio)} | {get_trait('age', '🎂', player.age)}\n"
+        f"├ {get_trait('profession', '🛠', player.profession)}\n"
+        f"├ {get_trait('health', '❤️', player.health)}\n"
+        f"├ {get_trait('hobby', '🎨', player.hobby)}\n"
+        f"├ {get_trait('phobia', '😱', player.phobia)}\n"
+        f"├ {get_trait('inventory', '🎒', player.inventory)}\n"
+        f"└ {get_trait('fact', 'ℹ️', player.fact)}\n"
     )

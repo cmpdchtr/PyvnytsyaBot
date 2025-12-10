@@ -12,17 +12,17 @@ def main_menu() -> InlineKeyboardMarkup:
 def room_creator_menu(room_code: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🚀 Почати гру", callback_data=f"start_game_{room_code}")
-    builder.button(text="🤖 Додати бота", callback_data=f"add_bot_{room_code}")
     builder.button(text="⚙️ Налаштування", callback_data=f"settings_{room_code}")
+    builder.button(text="🤖 Додати бота", callback_data=f"add_bot_{room_code}")
     builder.button(text="❌ Видалити кімнату", callback_data=f"delete_room_{room_code}")
-    builder.adjust(1)
+    builder.adjust(1, 2, 1)
     return builder.as_markup()
 
 def room_player_menu(room_code: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="👤 Мій статус", callback_data=f"my_status_{room_code}")
     builder.button(text="🚪 Вийти", callback_data=f"leave_room_{room_code}")
-    builder.adjust(1)
+    builder.adjust(2)
     return builder.as_markup()
 
 def back_to_main() -> InlineKeyboardMarkup:
@@ -35,36 +35,51 @@ def back_to_main() -> InlineKeyboardMarkup:
 def game_dashboard(room_code: str, phase: str = "revealing", is_alive: bool = True, is_admin: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
-    if is_alive and phase == "revealing":
-        builder.button(text="🃏 Відкрити карту", callback_data=f"reveal_menu_{room_code}")
+    sizes = []
     
+    # Row 1: Player Actions
+    row1 = 0
     if is_alive:
+        if phase == "revealing":
+            builder.button(text="🃏 Відкрити карту", callback_data=f"reveal_menu_{room_code}")
+            row1 += 1
         builder.button(text="👤 Мої характеристики", callback_data=f"my_status_{room_code}")
+        row1 += 1
+    if row1 > 0: sizes.append(row1)
     
+    # Row 2: Info
     builder.button(text="👀 Стіл гравців", callback_data=f"view_table_{room_code}")
     builder.button(text="📜 Інфо про бункер", callback_data=f"view_scenario_{room_code}")
+    sizes.append(2)
     
+    # Row 3: Admin
     if is_admin:
         if phase == "revealing":
             builder.button(text="🗣 Почати обговорення", callback_data=f"start_discuss_{room_code}")
+            sizes.append(1)
         elif phase == "discussion":
             builder.button(text="📢 Почати голосування", callback_data=f"force_vote_{room_code}")
+            sizes.append(1)
         
+    # Row 4: Refresh
     builder.button(text="🔄 Оновити", callback_data=f"refresh_game_{room_code}")
-    builder.adjust(1)
+    sizes.append(1)
+    
+    builder.adjust(*sizes)
     return builder.as_markup()
 
 def reveal_menu(room_code: str, revealed_traits: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    # Ordered for better layout
     traits = {
+        "bio": "⚧ Стать",
+        "age": "🎂 Вік",
         "profession": "🛠 Професія",
         "health": "❤️ Здоров'я",
         "hobby": "🎨 Хобі",
         "phobia": "😱 Фобія",
         "inventory": "🎒 Інвентар",
-        "fact": "ℹ️ Факт",
-        "bio": "⚧ Стать",
-        "age": "🎂 Вік"
+        "fact": "ℹ️ Факт"
     }
     
     for key, label in traits.items():
@@ -72,7 +87,26 @@ def reveal_menu(room_code: str, revealed_traits: list) -> InlineKeyboardMarkup:
             builder.button(text=label, callback_data=f"reveal_{key}_{room_code}")
             
     builder.button(text="🔙 Назад", callback_data=f"back_to_game_{room_code}")
-    builder.adjust(2)
+    
+    # Adjust 2 columns for traits, 1 for back button
+    # We need to calculate how many traits are left to know how to adjust
+    count = len([k for k in traits if k not in revealed_traits])
+    
+    # If count is even: 2, 2, ..., 1
+    # If count is odd: 2, 2, ..., 1, 1 (last trait alone, then back)
+    # Or just adjust(2) and the last row will handle itself?
+    # Yes, adjust(2) will fill rows. The last button (Back) might end up sharing a row if we are not careful.
+    # To force Back to be on its own row, we can append 1 to sizes.
+    
+    # But adjust() repeats the pattern. adjust(2) -> 2, 2, 2...
+    # If we want the last one to be 1, we need to be specific.
+    
+    sizes = [2] * (count // 2)
+    if count % 2 != 0:
+        sizes.append(1)
+    sizes.append(1) # Back button
+    
+    builder.adjust(*sizes)
     return builder.as_markup()
 
 def voting_menu(room_code: str, players: list) -> InlineKeyboardMarkup:
@@ -81,7 +115,7 @@ def voting_menu(room_code: str, players: list) -> InlineKeyboardMarkup:
         if player.is_alive:
             name = player.user.full_name or player.user.username
             builder.button(text=f"💀 {name}", callback_data=f"vote_{player.id}_{room_code}")
-    builder.adjust(1)
+    builder.adjust(2) # 2 players per row looks better
     return builder.as_markup()
 
 def admin_game_menu(room_code: str) -> InlineKeyboardMarkup:
