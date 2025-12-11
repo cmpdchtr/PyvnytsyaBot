@@ -1,10 +1,12 @@
-import google.generativeai as genai
+import asyncio
+from goodbye_quota import GoodbyeQuota
 from ..config import config
 
 class AIService:
     def __init__(self):
-        genai.configure(api_key=config.GEMINI_API_KEY.get_secret_value())
-        self.model = genai.GenerativeModel('gemini-2.5-flash-lite') 
+        keys = [config.GEMINI_API_KEY.get_secret_value()]
+        self.client = GoodbyeQuota(keys)
+        self.model = self.client.create_model('gemini-2.5-flash-lite') 
 
     async def generate_scenario(self, custom_prompt: str = None) -> str:
         base_instruction = (
@@ -22,7 +24,7 @@ class AIService:
         else:
             prompt = base_instruction
 
-        response = await self.model.generate_content_async(prompt)
+        response = await asyncio.to_thread(self.model.generate_content, prompt)
         return response.text
 
     async def generate_ending(self, survivors_info: str, scenario: str, custom_prompt: str = None) -> str:
@@ -42,7 +44,7 @@ class AIService:
         else:
             prompt = base_instruction
         try:
-            response = await self.model.generate_content_async(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             if response and response.text:
                 return response.text
             else:
