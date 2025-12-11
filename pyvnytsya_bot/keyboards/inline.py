@@ -47,6 +47,11 @@ def game_dashboard(room_code: str, phase: str = "revealing", is_alive: bool = Tr
         row1 += 1
     if row1 > 0: sizes.append(row1)
     
+    # Row 1.5: Action Cards
+    if is_alive:
+        builder.button(text="⚡ Картки дій", callback_data=f"action_cards_{room_code}")
+        sizes.append(1)
+    
     # Row 2: Info
     builder.button(text="👀 Стіл гравців", callback_data=f"view_table_{room_code}")
     builder.button(text="📜 Інфо про бункер", callback_data=f"view_scenario_{room_code}")
@@ -165,4 +170,34 @@ def packs_menu(room_code: str, packs: list, user_id: int) -> InlineKeyboardMarku
     sizes.extend([1, 1, 1]) # Actions
     
     builder.adjust(*sizes)
+    return builder.as_markup()
+
+def action_cards_menu(room_code: str, cards: list) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    sizes = []
+    
+    for i, card in enumerate(cards):
+        status = "" if not card["used"] else " (Використано)"
+        # Name button shows info
+        builder.button(text=f"{card['name']}{status}", callback_data=f"info_card_{i}_{room_code}")
+        sizes.append(1)
+        
+        if not card["used"] and card["type"] == "active":
+             builder.button(text="⚡ Використати", callback_data=f"use_card_{i}_{room_code}")
+             sizes.append(1)
+             
+    builder.button(text="🔙 Назад", callback_data=f"back_to_game_{room_code}")
+    sizes.append(1)
+    
+    builder.adjust(*sizes)
+    return builder.as_markup()
+
+def target_selection_menu(room_code: str, players: list, action_index: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for player in players:
+        if player.is_alive:
+            name = player.user.full_name or player.user.username
+            builder.button(text=f"🎯 {name}", callback_data=f"target_{player.id}_{action_index}_{room_code}")
+    builder.button(text="🔙 Назад", callback_data=f"action_cards_{room_code}")
+    builder.adjust(2)
     return builder.as_markup()

@@ -12,8 +12,9 @@ logger = logging.getLogger(__name__)
 
 from ..database.models import Room, Player
 from ..services.gemini import ai_service
-from ..utils.game_utils import generate_characteristics, format_player_card, escape_markdown
-from ..keyboards.inline import game_dashboard, reveal_menu, voting_menu, admin_game_menu, main_menu
+from ..utils.game_utils import generate_characteristics, format_player_card, escape_markdown, ACTION_CARDS
+from ..keyboards.inline import game_dashboard, reveal_menu, voting_menu, admin_game_menu, main_menu, action_cards_menu, target_selection_menu
+import json
 
 router = Router()
 
@@ -90,6 +91,9 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
     room.survivors_count = max(1, players_count // 2) # Half survive
     
     # Assign characteristics
+    from ..utils.game_utils import get_random_action_cards
+    import json
+    
     for player in room.players:
         chars = generate_characteristics(pack_data)
         player.profession = chars["profession"]
@@ -100,6 +104,18 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
         player.fact = chars["fact"]
         player.age = chars["age"]
         player.bio = chars["bio"]
+        
+        # Assign Action Cards
+        cards_def = get_random_action_cards(2)
+        # Add state
+        cards = []
+        for c in cards_def:
+            c_copy = c.copy()
+            c_copy["used"] = False
+            cards.append(c_copy)
+            
+        player.action_cards = json.dumps(cards)
+        
         player.is_alive = True
         player.revealed_traits = ""
         player.revealed_count_round = 0
@@ -350,6 +366,122 @@ async def view_table(callback: types.CallbackQuery, session: AsyncSession, bot: 
              await callback.message.edit_text(report, reply_markup=game_dashboard(code, phase=room.phase, is_alive=is_alive, is_admin=is_admin), parse_mode="Markdown")
     await callback.answer()
 
+# --- Action Cards Handlers ---
+
+@router.callback_query(F.data.startswith("action_cards_"))
+async def show_action_cards(callback: types.CallbackQuery, session: AsyncSession):
+    code = callback.data.split("_")[2]
+    room = await get_room_with_players(session, code)
+    if not room: return
+    
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    if not player or not player.is_alive: return
+    
+    cards = json.loads(player.action_cards)
+    await callback.message.edit_text("⚡ Ваші картки дій:", reply_markup=action_cards_menu(code, cards))
+
+@router.callback_query(F.data.startswith("info_card_"))
+async def show_card_info(callback: types.CallbackQuery, session: AsyncSession):
+    parts = callback.data.split("_")
+    idx = int(parts[2])
+    code = parts[3]
+    
+    room = await get_room_with_players(session, code)
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    cards = json.loads(player.action_cards)
+    card = cards[idx]
+    
+    await callback.answer(f"{card['name']}\n\n{card['desc']}", show_alert=True)
+
+@router.callback_query(F.data.startswith("use_card_"))
+async def use_card_start(callback: types.CallbackQuery, session: AsyncSession):
+    parts = callback.data.split("_")
+    idx = int(parts[2])
+    code = parts[3]
+    
+    room = await get_room_with_players(session, code)
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    cards = json.loads(player.action_cards)
+    card = cards[idx]
+    
+    if card["used"]:
+        await callback.answer("Ця картка вже використана!", show_alert=True)
+        return
+        
+    if card.get("needs_target"):
+        targets = [p for p in room.players if p.is_alive and p.id != player.id]
+        await callback.message.edit_text(f"🎯 Оберіть ціль для '{card['name']}':", reply_markup=target_selection_menu(code, targets, idx))
+    else:
+        # Execute immediately
+        await execute_card_effect(callback, session, room, player, idx, None)
+
+@router.callback_query(F.data.startswith("target_"))
+async def use_card_target(callback: types.CallbackQuery, session: AsyncSession):
+    parts = callback.data.split("_")
+    target_id = int(parts[1])
+    idx = int(parts[2])
+    code = parts[3]
+    
+    room = await get_room_with_players(session, code)
+    player = next((p for p in room.players if p.user_id == callback.from_user.id), None)
+    target = next((p for p in room.players if p.id == target_id), None)
+    
+    await execute_card_effect(callback, session, room, player, idx, target)
+
+async def execute_card_effect(callback, session, room, player, card_idx, target):
+    cards = json.loads(player.action_cards)
+    card = cards[card_idx]
+    card_id = card["id"]
+    
+    # Mark as used
+    card["used"] = True
+    player.action_cards = json.dumps(cards)
+    
+    msg = f"⚡ Гравець *{escape_markdown(player.user.full_name)}* використав картку *{card['name']}*!"
+    
+    # Logic per card
+    if card_id == "heal":
+        player.health = "Здоровий"
+        msg += "\n❤️ Він повністю вилікувався!"
+        
+    elif card_id == "reroll":
+        from ..utils.game_utils import PROFESSIONS, get_random_trait
+        new_prof = get_random_trait(PROFESSIONS)
+        player.profession = new_prof
+        msg += f"\n🛠 Його нова професія: *{new_prof}*!"
+        
+    elif card_id == "scan":
+        # Private info
+        traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
+        trait_key = random.choice(traits)
+        val = getattr(target, trait_key)
+        await callback.answer(f"🔍 {target.user.full_name}: {trait_key} = {val}", show_alert=True)
+        msg += f"\nВін дізнався щось про *{escape_markdown(target.user.full_name)}*..."
+        
+    elif card_id == "silence":
+        # Just narrative for now, or we need a 'silenced' flag
+        msg += f"\n🤐 *{escape_markdown(target.user.full_name)}* тепер мовчить (заборонено писати в чат)!"
+        
+    elif card_id == "steal":
+        # Swap inventory
+        p_inv = player.inventory
+        t_inv = target.inventory
+        player.inventory = t_inv
+        target.inventory = p_inv
+        msg += f"\n🎒 Він обмінявся інвентарем з *{escape_markdown(target.user.full_name)}*!"
+        
+    await session.commit()
+    
+    # Notify everyone
+    for p in room.players:
+        if p.user_id > 0:
+            try:
+                await callback.bot.send_message(p.user_id, msg, parse_mode="Markdown")
+            except: pass
+            
+    # Return to menu
+    await callback.message.edit_text("⚡ Ваші картки дій:", reply_markup=action_cards_menu(room.code, cards))
+
 @router.callback_query(F.data.startswith("refresh_game_"))
 async def refresh_game(callback: types.CallbackQuery, session: AsyncSession):
     code = callback.data.split("_")[2]
@@ -455,11 +587,42 @@ async def finish_voting(room, session, bot):
     loser = max(alive_targets, key=lambda p: p.votes_received)
     # Handle ties? For now, just pick one.
     
-    loser.is_alive = False
-    # Reveal all traits for loser
-    all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
-    loser.revealed_traits = ",".join(all_traits)
+    # Check Passive Cards
+    loser_cards = json.loads(loser.action_cards)
+    saved = False
+    revenge_target = None
     
+    for card in loser_cards:
+        if not card["used"]:
+            if card["id"] == "defense":
+                saved = True
+                card["used"] = True
+                loser.action_cards = json.dumps(loser_cards)
+                break
+            elif card["id"] == "revenge":
+                card["used"] = True
+                loser.action_cards = json.dumps(loser_cards)
+                # Pick random victim
+                potential_victims = [p for p in alive_targets if p.id != loser.id]
+                if potential_victims:
+                    revenge_target = random.choice(potential_victims)
+                break
+    
+    msg_extra = ""
+    
+    if saved:
+        msg_extra = f"\n🛡️ Але *{escape_markdown(loser.user.full_name)}* використав Бронежилет і залишився в грі!"
+    else:
+        loser.is_alive = False
+        # Reveal all traits for loser
+        all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
+        loser.revealed_traits = ",".join(all_traits)
+        
+        if revenge_target:
+            revenge_target.is_alive = False
+            revenge_target.revealed_traits = ",".join(all_traits)
+            msg_extra = f"\n💣 *{escape_markdown(loser.user.full_name)}* використав Помсту і забрав з собою *{escape_markdown(revenge_target.user.full_name)}*!"
+
     room.round_number += 1
     room.phase = "revealing"
     
@@ -473,12 +636,22 @@ async def finish_voting(room, session, bot):
     
     # Notify result
     safe_loser_name = escape_markdown(loser.user.full_name or loser.user.username)
-    msg = (
-        f"💀 *Голосування завершено!*\n"
-        f"Бункер покидає: *{safe_loser_name}*.\n\n"
-        f"🔢 *Раунд {room.round_number} почався!*\n"
-        f"Відкрийте 1 характеристику!"
-    )
+    
+    if saved:
+        msg = (
+            f"💀 *Голосування завершено!*\n"
+            f"Більшість проголосувала проти *{safe_loser_name}*.\n"
+            f"{msg_extra}\n\n"
+            f"🔢 *Раунд {room.round_number} почався!*\n"
+        )
+    else:
+        msg = (
+            f"💀 *Голосування завершено!*\n"
+            f"Бункер покидає: *{safe_loser_name}*.\n"
+            f"{msg_extra}\n\n"
+            f"🔢 *Раунд {room.round_number} почався!*\n"
+            f"Відкрийте 1 характеристику!"
+        )
     
     # Check Game Over
     alive_count = len([p for p in room.players if p.is_alive])

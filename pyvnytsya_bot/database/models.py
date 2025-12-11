@@ -55,6 +55,7 @@ class Player(Base):
     fact = Column(String, nullable=True)
     age = Column(Integer, nullable=True) # Added Age
     bio = Column(String, nullable=True) # Gender/Bio
+    action_cards = Column(Text, default="[]") # JSON list of cards
     
     # Game State
     is_alive = Column(Boolean, default=True)
