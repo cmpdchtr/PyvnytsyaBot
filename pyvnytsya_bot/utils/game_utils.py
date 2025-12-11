@@ -8,10 +8,17 @@ ACTION_CARDS = [
     {"id": "steal", "name": "🦝 Крадіжка", "desc": "Вкрасти інвентар у іншого гравця (обмін інвентарем).", "type": "active", "needs_target": True},
     {"id": "defense", "name": "🛡️ Бронежилет", "desc": "Якщо проти вас набереться більшість голосів, ви не вилетите (одноразово).", "type": "passive"},
     {"id": "revenge", "name": "💣 Помста", "desc": "Якщо вас виженуть, ви заберете з собою одного випадкового гравця.", "type": "passive"},
+    {"id": "poison", "name": "💉 Отрута", "desc": "Заразити іншого гравця випадковою хворобою.", "type": "active", "needs_target": True},
+    {"id": "swap_health", "name": "🔄 Рокіровка", "desc": "Обмінятися станом здоров'я з іншим гравцем.", "type": "active", "needs_target": True},
+    {"id": "mask", "name": "🎭 Маска", "desc": "Приховати одну свою вже відкриту характеристику (зробити її знову невідомою).", "type": "active", "needs_target": False},
+    {"id": "vote_x2", "name": "📢 Гучномовець", "desc": "Ваш голос у наступному голосуванні рахується за два.", "type": "active", "needs_target": False},
 ]
 
-def get_random_action_cards(count=2):
-    return random.sample(ACTION_CARDS, k=min(count, len(ACTION_CARDS)))
+def get_random_action_cards():
+    # 40% chance to get 1 card, 60% chance to get nothing
+    if random.random() < 0.4:
+        return [random.choice(ACTION_CARDS)]
+    return []
 
 # Format: (Value, Weight)
 # Higher weight = higher chance

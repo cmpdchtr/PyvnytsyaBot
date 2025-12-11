@@ -106,7 +106,7 @@ async def start_game(callback: types.CallbackQuery, session: AsyncSession, bot: 
         player.bio = chars["bio"]
         
         # Assign Action Cards
-        cards_def = get_random_action_cards(2)
+        cards_def = get_random_action_cards()
         # Add state
         cards = []
         for c in cards_def:
@@ -469,6 +469,31 @@ async def execute_card_effect(callback, session, room, player, card_idx, target)
         player.inventory = t_inv
         target.inventory = p_inv
         msg += f"\n🎒 Він обмінявся інвентарем з *{escape_markdown(target.user.full_name)}*!"
+
+    elif card_id == "poison":
+        target.health = "Отруєння (Смертельно)"
+        msg += f"\n💉 *{escape_markdown(target.user.full_name)}* був отруєний!"
+
+    elif card_id == "swap_health":
+        p_health = player.health
+        t_health = target.health
+        player.health = t_health
+        target.health = p_health
+        msg += f"\n🔄 Він обмінявся здоров'ям з *{escape_markdown(target.user.full_name)}*!"
+
+    elif card_id == "mask":
+        # Hide one random revealed trait
+        revealed = player.revealed_traits.split(",") if player.revealed_traits else []
+        if revealed:
+            hidden = revealed.pop(random.randint(0, len(revealed) - 1))
+            player.revealed_traits = ",".join(revealed)
+            msg += f"\n🎭 Він знову приховав свою характеристику!"
+        else:
+            msg += "\n...але у нього і так нічого не відкрито."
+
+    elif card_id == "vote_x2":
+        # Logic needs to be handled in voting phase, for now just narrative
+        msg += "\n📢 Його голос у наступному раунді буде подвоєно!"
         
     await session.commit()
     
