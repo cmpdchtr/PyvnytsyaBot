@@ -4,7 +4,9 @@ from ..config import config
 
 class AIService:
     def __init__(self):
-        keys = [config.GEMINI_API_KEY.get_secret_value()]
+        # Split the comma-separated string into a list of keys
+        raw_keys = config.GEMINI_API_KEY.get_secret_value()
+        keys = [k.strip() for k in raw_keys.split(',') if k.strip()]
         self.client = GoodbyeQuota(keys)
         self.model = self.client.create_model('gemini-2.5-flash-lite') 
 
