@@ -598,32 +598,42 @@ async def process_vote(callback: types.CallbackQuery, session: AsyncSession, bot
         await finish_voting(room, session, bot)
 
 async def finish_voting(room, session, bot):
-    # Bots vote smartly
-    alive_bots = [p for p in room.players if p.is_alive and p.user_id < 0]
+    # Bots vote smartly (Batch)
+    alive_bots = [p for p in room.players if p.is_alive and p.user_id < 0 and not p.has_voted]
     alive_targets = [p for p in room.players if p.is_alive]
     
     bot_reasons = []
 
-    for bot_player in alive_bots:
-        if not bot_player.has_voted:
-            decision = await bot_ai.decide_vote(bot_player, room, alive_targets)
+    if alive_bots:
+        # Get all decisions in one call
+        decisions = await bot_ai.decide_votes_batch(alive_bots, room, alive_targets)
+        
+        for bot_player in alive_bots:
+            decision = decisions.get(bot_player.id)
+            
+            # Fallback if batch failed for specific bot
+            if not decision:
+                 import random
+                 valid_targets = [p for p in alive_targets if p.id != bot_player.id]
+                 if valid_targets:
+                     target = random.choice(valid_targets)
+                     decision = {"target_id": target.id, "reason": "Random fallback"}
+                 else:
+                     continue
+
             target_id = decision.get("target_id")
             reason = decision.get("reason", "...")
             
             # Find target object
             target = next((p for p in alive_targets if p.id == target_id), None)
             
-            # Fallback if AI hallucinated an ID
-            if not target:
-                 target = random.choice(alive_targets)
-                 reason = "Random choice (AI error)"
-
-            target.votes_received += 1
-            bot_player.has_voted = True
-            
-            bot_name = bot_player.user.full_name or "Bot"
-            target_name = target.user.full_name or "Unknown"
-            bot_reasons.append(f"🤖 *{escape_markdown(bot_name)}* -> *{escape_markdown(target_name)}*: {escape_markdown(reason)}")
+            if target:
+                target.votes_received += 1
+                bot_player.has_voted = True
+                
+                bot_name = bot_player.user.full_name or "Bot"
+                target_name = target.user.full_name or "Unknown"
+                bot_reasons.append(f"🤖 *{escape_markdown(bot_name)}* -> *{escape_markdown(target_name)}*: {escape_markdown(reason)}")
 
     if bot_reasons:
         try:
