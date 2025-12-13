@@ -138,9 +138,5 @@ class BotAI:
         # Legacy wrapper for single vote if needed
         res = await self.decide_votes_batch([bot_player], room, survivors)
         return res.get(bot_player.id, {"target_id": None, "reason": "Error"})
-            candidates = [p.id for p in survivors if p.id != bot_player.id]
-            if candidates:
-                return {"target_id": random.choice(candidates), "reason": "Мій нейропроцесор перегрівся."}
-            return {"target_id": None, "reason": "Error"}
 
 bot_ai = BotAI()
