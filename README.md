@@ -71,7 +71,23 @@ Don't like the standard traits? Want to play in the **Metro 2033** or **S.T.A.L.
    pip install -r requirements.txt
    ```
 
-4. **Configure Environment:**
+4. **Setup PostgreSQL:**
+   If you haven't set up the database yet, follow these steps:
+
+   *   **Log in to PostgreSQL:**
+       ```bash
+       psql -U postgres
+       ```
+   *   **Create User and Database:**
+       Run the following SQL commands:
+       ```sql
+       CREATE USER pyvnytsya_user WITH PASSWORD 'secure_password';
+       CREATE DATABASE pyvnytsya_db OWNER pyvnytsya_user;
+       GRANT ALL PRIVILEGES ON DATABASE pyvnytsya_db TO pyvnytsya_user;
+       \q
+       ```
+
+5. **Configure Environment:**
    Create a `.env` file in the root directory:
    ```env
    BOT_TOKEN=your_telegram_bot_token
@@ -80,12 +96,12 @@ Don't like the standard traits? Want to play in the **Metro 2033** or **S.T.A.L.
    
    DB_HOST=localhost
    DB_PORT=5432
-   DB_USER=your_db_user
-   DB_PASS=your_db_password
+   DB_USER=pyvnytsya_user
+   DB_PASS=secure_password
    DB_NAME=pyvnytsya_db
    ```
 
-5. **Run the Bot:**
+6. **Run the Bot:**
    ```bash
    python main.py
    ```
