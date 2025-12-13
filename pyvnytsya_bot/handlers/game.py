@@ -636,10 +636,13 @@ async def finish_voting(room, session, bot):
                 bot_reasons.append(f"🤖 *{escape_markdown(bot_name)}* -> *{escape_markdown(target_name)}*: {escape_markdown(reason)}")
 
     if bot_reasons:
-        try:
-            await bot.send_message(room.chat_id, "🗳️ **Рішення ботів:**\n\n" + "\n".join(bot_reasons), parse_mode="Markdown")
-        except Exception as e:
-            logger.error(f"Failed to send bot reasons: {e}")
+        msg_reasons = "🗳️ **Рішення ботів:**\n\n" + "\n".join(bot_reasons)
+        for p in room.players:
+            if p.user_id > 0:
+                try:
+                    await bot.send_message(p.user_id, msg_reasons, parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Failed to send bot reasons to {p.user_id}: {e}")
 
     await session.commit()
     
