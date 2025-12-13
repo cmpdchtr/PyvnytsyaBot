@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 from ..database.models import Room, Player
 from ..services.gemini import ai_service
+from ..services.bot_ai import bot_ai
 from ..utils.game_utils import generate_characteristics, format_player_card, escape_markdown, ACTION_CARDS
 from ..keyboards.inline import game_dashboard, reveal_menu, voting_menu, admin_game_menu, main_menu, action_cards_menu, target_selection_menu
 import json
@@ -216,27 +217,6 @@ async def process_reveal(callback: types.CallbackQuery, session: AsyncSession, b
     is_admin = (player.user_id == room.creator_id)
     await callback.message.edit_text("✅ Карта відкрита!", reply_markup=game_dashboard(code, phase=room.phase, is_admin=is_admin))
     
-    # Check if all alive players revealed
-    alive_players = [p for p in room.players if p.is_alive and p.user_id > 0] # Only real players need to act manually? 
-    
-    # Auto-reveal for bots ONLY if creator revealed
-    if player.user_id == room.creator_id:
-        bots = [p for p in room.players if p.is_alive and p.user_id < 0]
-        for bot_player in bots:
-            if bot_player.revealed_count_round < limit:
-                # Bot reveals random unrevealed trait
-                all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
-                bot_revealed = bot_player.revealed_traits.split(",") if bot_player.revealed_traits else []
-                available = [t for t in all_traits if t not in bot_revealed]
-                
-                if available:
-                    chosen = random.choice(available)
-                    bot_revealed.append(chosen)
-                    bot_player.revealed_traits = ",".join(bot_revealed)
-                    bot_player.revealed_count_round += 1
-                    # Notify
-                    # await bot.send_message(room.creator_id, f"🤖 Бот відкрив {chosen}") 
-
     await session.commit()
 
 @router.callback_query(F.data.startswith("start_discuss_"))
@@ -248,10 +228,40 @@ async def start_discuss(callback: types.CallbackQuery, session: AsyncSession, bo
         await callback.answer("Тільки адмін може почати обговорення.", show_alert=True)
         return
 
+    # Force bots to reveal traits
+    limit = 2 if room.round_number == 1 else 1
+    alive_bots = [p for p in room.players if p.is_alive and p.user_id < 0]
+    
+    bot_updates = []
+    
+    for bot_player in alive_bots:
+        while bot_player.revealed_count_round < limit:
+            all_traits = ["profession", "health", "hobby", "phobia", "inventory", "fact", "bio", "age"]
+            bot_revealed = bot_player.revealed_traits.split(",") if bot_player.revealed_traits else []
+            available = [t for t in all_traits if t not in bot_revealed]
+            
+            if available:
+                chosen = random.choice(available)
+                bot_revealed.append(chosen)
+                bot_player.revealed_traits = ",".join(bot_revealed)
+                bot_player.revealed_count_round += 1
+                
+                trait_name = {
+                    "profession": "Професію", "health": "Здоров'я", "hobby": "Хобі",
+                    "phobia": "Фобію", "inventory": "Інвентар", "fact": "Факт",
+                    "bio": "Стать", "age": "Вік"
+                }.get(chosen, chosen)
+                
+                bot_updates.append(f"🤖 *{escape_markdown(bot_player.user.full_name)}* відкрив *{trait_name}*")
+            else:
+                break
+
     room.phase = "discussion"
     await session.commit()
     
     msg = "🗣 *Етап обговорення!*\nАргументуйте, чому ви маєте вижити, і хто має піти."
+    if bot_updates:
+        msg += "\n\n" + "\n".join(bot_updates)
     
     for p in room.players:
         if p.user_id > 0:
@@ -577,35 +587,63 @@ async def process_vote(callback: types.CallbackQuery, session: AsyncSession, bot
         target.votes_received += 1
         voter.has_voted = True
         
-        # If creator voted, bots follow
-        if voter.user_id == room.creator_id:
-            alive_bots = [p for p in room.players if p.is_alive and p.user_id < 0]
-            for bot_p in alive_bots:
-                if not bot_p.has_voted:
-                    target.votes_received += 1
-                    bot_p.has_voted = True
-            await callback.message.answer(f"🤖 Боти підтримали ваш вибір!")
-
         await session.commit()
         safe_target_name = escape_markdown(target.user.full_name or target.user.username)
         await callback.message.edit_text(f"✅ Ви проголосували проти {safe_target_name}.")
     
-    # Check if all voted (bots vote randomly)
+    # Check if all REAL players voted
     alive_real_players = [p for p in room.players if p.is_alive and p.user_id > 0]
     if all(p.has_voted for p in alive_real_players):
+        await callback.message.answer("🤖 Боти думають...")
         await finish_voting(room, session, bot)
 
 async def finish_voting(room, session, bot):
-    # Bots vote randomly
-    alive_bots = [p for p in room.players if p.is_alive and p.user_id < 0]
+    # Bots vote smartly (Batch)
+    alive_bots = [p for p in room.players if p.is_alive and p.user_id < 0 and not p.has_voted]
     alive_targets = [p for p in room.players if p.is_alive]
     
-    for bot_player in alive_bots:
-        if not bot_player.has_voted and alive_targets:
-            target = random.choice(alive_targets)
-            target.votes_received += 1
-            bot_player.has_voted = True
-    
+    bot_reasons = []
+
+    if alive_bots:
+        # Get all decisions in one call
+        decisions = await bot_ai.decide_votes_batch(alive_bots, room, alive_targets)
+        
+        for bot_player in alive_bots:
+            decision = decisions.get(bot_player.id)
+            
+            # Fallback if batch failed for specific bot
+            if not decision:
+                 import random
+                 valid_targets = [p for p in alive_targets if p.id != bot_player.id]
+                 if valid_targets:
+                     target = random.choice(valid_targets)
+                     decision = {"target_id": target.id, "reason": "Random fallback"}
+                 else:
+                     continue
+
+            target_id = decision.get("target_id")
+            reason = decision.get("reason", "...")
+            
+            # Find target object
+            target = next((p for p in alive_targets if p.id == target_id), None)
+            
+            if target:
+                target.votes_received += 1
+                bot_player.has_voted = True
+                
+                bot_name = bot_player.user.full_name or "Bot"
+                target_name = target.user.full_name or "Unknown"
+                bot_reasons.append(f"🤖 *{escape_markdown(bot_name)}* -> *{escape_markdown(target_name)}*: {escape_markdown(reason)}")
+
+    if bot_reasons:
+        msg_reasons = "🗳️ **Рішення ботів:**\n\n" + "\n".join(bot_reasons)
+        for p in room.players:
+            if p.user_id > 0:
+                try:
+                    await bot.send_message(p.user_id, msg_reasons, parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Failed to send bot reasons to {p.user_id}: {e}")
+
     await session.commit()
     
     # Calculate loser
