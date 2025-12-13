@@ -6,6 +6,7 @@ import random
 
 from ..database.models import Room, Player, User
 from ..utils.codes import generate_room_code
+from ..utils.game_utils import get_random_bot_name
 from ..keyboards.inline import room_creator_menu, room_player_menu, back_to_main
 from ..states.game_states import JoinRoom
 
@@ -51,9 +52,9 @@ async def add_bot(callback: types.CallbackQuery, session: AsyncSession):
 
     # Create fake user
     bot_id = -random.randint(1000, 999999)
-    bot_name = f"Bot_{abs(bot_id)}"
+    bot_name = get_random_bot_name()
     
-    fake_user = User(id=bot_id, username=bot_name, full_name=bot_name)
+    fake_user = User(id=bot_id, username=f"bot_{abs(bot_id)}", full_name=bot_name)
     session.add(fake_user)
     
     # Add player
